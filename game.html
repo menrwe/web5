@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Міні-гра «Пінг-понг»</title>
+<style>
+:root{--bg:#f4f6fb;--card:#ffffff;--text:#1d2433;--muted:#5b6478;--border:#d9deea;--accent:#3b6df0;color-scheme:light dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12151c;--card:#1c212c;--text:#e8ebf3;--muted:#98a1b5;--border:#2d3445}}
+:root[data-theme="dark"]{--bg:#12151c;--card:#1c212c;--text:#e8ebf3;--muted:#98a1b5;--border:#2d3445}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.5}
+main{max-width:520px;margin:0 auto;padding:24px 16px}
+h1{font-size:1.5rem;margin:0 0 4px}
+p.sub{margin:0 0 16px;color:var(--muted)}
+.info{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.info div{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 14px;font-weight:600}
+canvas{display:block;width:100%;height:auto;background:#1c212c;border:1px solid var(--border);border-radius:12px;touch-action:none}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+button{font:inherit;padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+</style>
+</head>
+<body>
+<main>
+  <h1>Пінг-понг</h1>
+  <p class="sub">Бонусне завдання · Лабораторна робота №5 · Керуй платформою мишею, пальцем або стрілками ← →</p>
+
+  <div class="info">
+    <div>Рахунок: <span id="score">0</span></div>
+    <div>Життя: <span id="lives">3</span></div>
+    <div>Рекорд: <span id="best">0</span></div>
+  </div>
+
+  <canvas id="game" width="480" height="360"></canvas>
+
+  <div class="controls">
+    <button id="btnStart" class="primary">▶ Старт</button>
+    <button id="btnPause">⏸ Пауза</button>
+    <button id="btnRestart">↺ Заново</button>
+  </div>
+</main>
+
+<script>
+// 1. Полотно (canvas) і контекст малювання
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const W = canvas.width;
+const H = canvas.height;
+
+// 2. Елементи для виводу рахунку
+const scoreEl = document.getElementById("score");
+const livesEl = document.getElementById("lives");
+const bestEl = document.getElementById("best");
+
+// 3. Константи і змінні гри
+const PADDLE_W = 90;
+const PADDLE_H = 12;
+const PADDLE_Y = H - PADDLE_H - 10;   // висота платформи
+const BALL_R = 8;                     // радіус кульки
+const MAX_SPEED = 9;                  // обмеження швидкості
+let paddleX, ballX, ballY, vx, vy;
+let score = 0, lives = 3, best = 0;
+let running = false;
+let over = false;
+let message = "Натисни «Старт»";
+let frameId = null;
+const keys = { left: false, right: false };
+
+// 4. Нова кулька з центру поля
+function resetBall() {
+  ballX = W / 2;
+  ballY = H / 2;
+  vx = Math.random() < 0.5 ? -3 : 3;
+  vy = -3;
+}
+
+// 5. Нова гра
+function newGame() {
+  paddleX = (W - PADDLE_W) / 2;
+  score = 0;
+  lives = 3;
+  over = false;
+  message = "Натисни «Старт»";
+  resetBall();
+  updateInfo();
+  draw();
+}
+
+function updateInfo() {
+  scoreEl.textContent = score;
+  livesEl.textContent = lives;
+  bestEl.textContent = best;
+}
+
+// 6. Логіка одного кадру
+function update() {
+  // рух платформи клавішами
+  if (keys.left) paddleX -= 6;
+  if (keys.right) paddleX += 6;
+  paddleX = Math.max(0, Math.min(paddleX, W - PADDLE_W));
+
+  // рух кульки
+  ballX += vx;
+  ballY += vy;
+
+  // відбиття від лівої, правої та верхньої стінок
+  if (ballX < BALL_R) { ballX = BALL_R; vx = -vx; }
+  if (ballX > W - BALL_R) { ballX = W - BALL_R; vx = -vx; }
+  if (ballY < BALL_R) { ballY = BALL_R; vy = -vy; }
+
+  // відбиття від платформи
+  if (vy > 0 && ballY + BALL_R >= PADDLE_Y && ballY + BALL_R <= PADDLE_Y + PADDLE_H + vy
+      && ballX >= paddleX && ballX <= paddleX + PADDLE_W) {
+    const hit = (ballX - (paddleX + PADDLE_W / 2)) / (PADDLE_W / 2); // від -1 до 1
+    vx = hit * 5;                                  // кут залежить від місця удару
+    vy = -Math.min(Math.abs(vy) * 1.05, MAX_SPEED); // трохи прискорюємо
+    ballY = PADDLE_Y - BALL_R;
+    score++;
+    updateInfo();
+  }
+
+  // кулька впала вниз
+  if (ballY > H + BALL_R) {
+    lives--;
+    if (lives <= 0) {
+      gameOver();
+    } else {
+      resetBall();
+      updateInfo();
+    }
+  }
+}
+
+// 7. Малювання кадру
+function draw() {
+  ctx.fillStyle = "#1c212c";
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = "#6c93ff";
+  ctx.fillRect(paddleX, PADDLE_Y, PADDLE_W, PADDLE_H);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(ballX, ballY, BALL_R, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (!running) {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "24px system-ui, Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(message, W / 2, H / 2);
+  }
+}
+
+// 8. Ігровий цикл
+function loop() {
+  update();
+  draw();
+  if (running) frameId = requestAnimationFrame(loop);
+}
+
+function startGame() {
+  if (running) return;
+  if (over) newGame();
+  running = true;
+  frameId = requestAnimationFrame(loop);
+}
+
+function pauseGame() {
+  if (!running) return;
+  running = false;
+  cancelAnimationFrame(frameId);
+  message = "Пауза";
+  draw();
+}
+
+function gameOver() {
+  running = false;
+  over = true;
+  cancelAnimationFrame(frameId);
+  if (score > best) best = score;
+  message = `Гру завершено! Рахунок: ${score}`;
+  updateInfo();
+  draw();
+}
+
+// 9. Керування: миша / дотик, клавіатура, кнопки
+canvas.addEventListener("pointermove", function (e) {
+  const rect = canvas.getBoundingClientRect();
+  const scale = W / rect.width;                 // перерахунок з пікселів екрана в координати полотна
+  paddleX = (e.clientX - rect.left) * scale - PADDLE_W / 2;
+  paddleX = Math.max(0, Math.min(paddleX, W - PADDLE_W));
+  if (!running) draw();
+});
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === "ArrowLeft") { keys.left = true; e.preventDefault(); }
+  if (e.key === "ArrowRight") { keys.right = true; e.preventDefault(); }
+});
+document.addEventListener("keyup", function (e) {
+  if (e.key === "ArrowLeft") keys.left = false;
+  if (e.key === "ArrowRight") keys.right = false;
+});
+
+document.getElementById("btnStart").addEventListener("click", startGame);
+document.getElementById("btnPause").addEventListener("click", pauseGame);
+document.getElementById("btnRestart").addEventListener("click", function () {
+  running = false;
+  cancelAnimationFrame(frameId);
+  newGame();
+});
+
+newGame();
+</script>
+</body>
+</html>
